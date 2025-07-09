@@ -81,16 +81,36 @@ class Main extends Controller
             'status' => false,
             'message' => 'สั่งออเดอร์ไม่สำเร็จ',
         ];
+        
         $orderData = $request->input('cart');
         $remark = $request->input('remark');
+        
+        if (empty($remark)) {
+            $allNotes = [];
+            foreach ($orderData as $order) {
+                if (!empty($order['note'])) {
+                    $allNotes[] = $order['note'];
+                }
+            }
+            $remark = !empty($allNotes) ? implode(' | ', $allNotes) : null;
+        }
+        
+        \Log::info('SendOrder Debug:', [
+            'remark_from_request' => $request->input('remark'),
+            'remark_final' => $remark,
+            'cart_data' => $orderData
+        ]);
+        
         $item = array();
         $total = 0;
+        
         foreach ($orderData as $key => $order) {
             $item[$key] = [
                 'menu_id' => $order['id'],
                 'quantity' => $order['amount'],
                 'price' => $order['total_price']
             ];
+            
             if (!empty($order['options'])) {
                 foreach ($order['options'] as $rs) {
                     $item[$key]['option'][] = $rs['id'];
@@ -98,14 +118,17 @@ class Main extends Controller
             } else {
                 $item[$key]['option'] = [];
             }
+            
             $total = $total + $order['total_price'];
         }
+        
         if (!empty($item)) {
             $order = new Orders();
             $order->table_id = session('table_id') ?? '1';
             $order->total = $total;
-            $order->remark = $remark;
+            $order->remark = $remark; 
             $order->status = 1;
+            
             if ($order->save()) {
                 foreach ($item as $rs) {
                     $orderdetail = new OrdersDetails();
@@ -113,6 +136,7 @@ class Main extends Controller
                     $orderdetail->menu_id = $rs['menu_id'];
                     $orderdetail->quantity = $rs['quantity'];
                     $orderdetail->price = $rs['price'];
+                    
                     if ($orderdetail->save()) {
                         foreach ($rs['option'] as $key => $option) {
                             $orderOption = new OrdersOption();
@@ -123,12 +147,14 @@ class Main extends Controller
                     }
                 }
             }
+            
             event(new OrderCreated(['📦 มีออเดอร์ใหม่']));
             $data = [
                 'status' => true,
                 'message' => 'สั่งออเดอร์เรียบร้อยแล้ว',
             ];
         }
+        
         return response()->json($data);
     }
 
